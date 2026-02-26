@@ -1,15 +1,23 @@
 import sys
-from PySide6.QtWidgets import QApplication
+import logging
+
+from app import FrameExtractorApp
 from main_window import MainWindow
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+
 def main():
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion") 
-    
-    window = MainWindow()
+    app = FrameExtractorApp(sys.argv)
+
+    window = MainWindow(app=app)
     window.show()
-    
+
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
