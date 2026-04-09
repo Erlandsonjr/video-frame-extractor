@@ -1,24 +1,19 @@
-"""Full-resolution frame preview dialog with zoom, pan, and navigation."""
+from collections import OrderedDict
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QSizePolicy, QWidget,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QPixmap, QWheelEvent, QKeySequence, QShortcut
+
+_PIXMAP_CACHE_SIZE = 5
 
 
 class PreviewDialog(QDialog):
-    """Modal dialog showing a full-resolution frame with zoom/pan and prev/next navigation."""
+    export_requested = Signal(int)
 
-    export_requested = Signal(int)  
-
-    def __init__(self, frames: list[tuple[QPixmap, str]], start_index: int = 0, parent=None):
-        """
-        Args:
-            frames: list of (full_res_pixmap, label_text) tuples
-            start_index: which frame to show first
-        """
+    def __init__(self, frames: list[tuple[str, str]], start_index: int = 0, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Frame Preview")
         self.resize(1000, 700)
@@ -27,6 +22,9 @@ class PreviewDialog(QDialog):
         self._frames = frames
         self._current_index = start_index
         self._zoom_factor = 1.0
+        self._pixmap_cache: OrderedDict[int, QPixmap] = OrderedDict()
+        self._scroll_target_y = 0
+        self._scroll_anim: QPropertyAnimation | None = None
 
         self._setup_ui()
         self._setup_shortcuts()
@@ -90,13 +88,25 @@ class PreviewDialog(QDialog):
         QShortcut(QKeySequence(Qt.Key_F), self, self._fit_to_window)
         QShortcut(QKeySequence(Qt.Key_Escape), self, self.close)
 
+    def _load_pixmap(self, index: int) -> QPixmap:
+        if index in self._pixmap_cache:
+            self._pixmap_cache.move_to_end(index)
+            return self._pixmap_cache[index]
+
+        file_path, _ = self._frames[index]
+        pixmap = QPixmap(file_path)
+        self._pixmap_cache[index] = pixmap
+        while len(self._pixmap_cache) > _PIXMAP_CACHE_SIZE:
+            self._pixmap_cache.popitem(last=False)
+        return pixmap
+
     def _show_frame(self, index: int):
-        pixmap, label_text = self._frames[index]
-        self._current_pixmap = pixmap
+        self._current_pixmap = self._load_pixmap(index)
         self._current_index = index
         self._zoom_factor = 1.0
         self._apply_zoom()
 
+        _, label_text = self._frames[index]
         total = len(self._frames)
         self._lbl_info.setText(f"{label_text}  ({index + 1} / {total})")
         self._btn_prev.setEnabled(index > 0)
@@ -137,7 +147,25 @@ class PreviewDialog(QDialog):
         self._apply_zoom()
 
     def wheelEvent(self, event: QWheelEvent):
-        if event.angleDelta().y() > 0:
-            self._zoom_in()
+        if event.modifiers() & Qt.ControlModifier:
+            if event.angleDelta().y() > 0:
+                self._zoom_in()
+            else:
+                self._zoom_out()
+            event.accept()
         else:
-            self._zoom_out()
+            scrollbar = self._scroll.verticalScrollBar()
+            delta = -event.angleDelta().y()
+            self._scroll_target_y = max(
+                scrollbar.minimum(),
+                min(scrollbar.maximum(), scrollbar.value() + delta),
+            )
+            if self._scroll_anim and self._scroll_anim.state() == QPropertyAnimation.Running:
+                self._scroll_anim.stop()
+            self._scroll_anim = QPropertyAnimation(scrollbar, b"value")
+            self._scroll_anim.setDuration(300)
+            self._scroll_anim.setStartValue(scrollbar.value())
+            self._scroll_anim.setEndValue(self._scroll_target_y)
+            self._scroll_anim.setEasingCurve(QEasingCurve.OutCubic)
+            self._scroll_anim.start()
+            event.accept()

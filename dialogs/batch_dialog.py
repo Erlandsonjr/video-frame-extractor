@@ -1,5 +1,3 @@
-"""Batch processing dialog — queue multiple videos for frame extraction."""
-
 import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -8,16 +6,15 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from utils.constants import VIDEO_FILTER, DEFAULT_INTERVAL, MIN_INTERVAL, MAX_INTERVAL, INTERVAL_STEP, TEMP_DIR
+from utils.constants import VIDEO_FILTER, DEFAULT_INTERVAL, MIN_INTERVAL, MAX_INTERVAL, INTERVAL_STEP
 from utils.settings import AppSettings
+from utils.tempdir import create_temp_dir
 from processing.video_processor import VideoProcessor
 
 import shutil
 
 
 class BatchDialog(QDialog):
-    """Dialog for queueing and processing multiple videos."""
-
     def __init__(self, settings: AppSettings, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Batch Processing")
@@ -143,8 +140,7 @@ class BatchDialog(QDialog):
             return
 
         entry = self._queue[self._current_index]
-        entry["temp_dir"] = os.path.join(TEMP_DIR, f"batch_{self._current_index}")
-        os.makedirs(entry["temp_dir"], exist_ok=True)
+        entry["temp_dir"] = create_temp_dir()
         entry["status"] = "processing"
         self._table.item(self._current_index, 2).setText("Processing...")
 
@@ -197,7 +193,6 @@ class BatchDialog(QDialog):
             self._lbl_status.setText(f"Batch complete: {done}/{total} videos processed successfully.")
 
     def get_results(self) -> list[dict]:
-        """Return the queue with temp_dir paths for frames that were extracted."""
         return [e for e in self._queue if e["status"] == "done" and e["temp_dir"]]
 
     def closeEvent(self, event):

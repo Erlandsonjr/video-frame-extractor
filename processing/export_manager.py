@@ -1,20 +1,11 @@
-"""Threaded export manager supporting multiple formats, quality settings, and filename patterns."""
-
 import os
 import cv2
 from PySide6.QtCore import QThread, Signal
 
+from utils.constants import EXPORT_FORMATS
+
 
 class ExportManager(QThread):
-    """Export frames to disk in a background thread with configurable format/quality.
-
-    Signals:
-        progress_updated(int): 0-100
-        frame_exported(str): destination path of last exported frame
-        finished(int, int): (success_count, total_count)
-        error_occurred(str): error message
-    """
-
     progress_updated = Signal(int)
     frame_exported = Signal(str)
     finished = Signal(int, int)
@@ -34,11 +25,19 @@ class ExportManager(QThread):
         self._frames = frames
         self._output_dir = output_dir
         self._video_name = video_name
-        self._fmt = fmt.upper()
+        self._fmt = fmt
         self._quality = quality
         self._pattern = filename_pattern
         self._scale_percent = scale_percent
         self._is_running = True
+
+    @staticmethod
+    def _resolve_format(fmt: str) -> dict:
+        upper = fmt.upper()
+        for key, val in EXPORT_FORMATS.items():
+            if key.upper() == upper:
+                return val
+        return EXPORT_FORMATS["PNG"]
 
     def run(self):
         total = len(self._frames)
@@ -46,8 +45,8 @@ class ExportManager(QThread):
             self.finished.emit(0, 0)
             return
 
-        ext_map = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp", "BMP": ".bmp"}
-        ext = ext_map.get(self._fmt, ".png")
+        fmt_info = self._resolve_format(self._fmt)
+        ext = fmt_info["ext"]
 
         success = 0
         for i, (time_str, temp_filepath) in enumerate(self._frames):
@@ -88,10 +87,10 @@ class ExportManager(QThread):
         self.finished.emit(success, total)
 
     def _get_write_params(self) -> list:
-        if self._fmt == "JPEG":
-            return [cv2.IMWRITE_JPEG_QUALITY, self._quality]
-        elif self._fmt == "WEBP":
-            return [cv2.IMWRITE_WEBP_QUALITY, self._quality]
+        fmt_info = self._resolve_format(self._fmt)
+        cv2_params = fmt_info["cv2_params"]
+        if cv2_params:
+            return [cv2_params[0], self._quality]
         return []
 
     def stop(self):

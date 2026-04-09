@@ -1,13 +1,9 @@
-"""Panel showing video metadata (duration, resolution, FPS, codec)."""
-
 import cv2
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel
 from PySide6.QtCore import Qt
 
 
 class VideoInfoPanel(QFrame):
-    """Horizontal info bar displayed after a video is loaded."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("video_info_panel")
@@ -50,11 +46,6 @@ class VideoInfoPanel(QFrame):
         return f"{h:02d}:{m:02d}:{s:05.2f}"
 
     def load_video_info(self, path: str) -> dict:
-        """Open the video, read metadata, update labels, and return info dict.
-
-        Returns a dict with keys: width, height, fps, duration, codec, aspect_ratio.
-        Returns an empty dict on failure.
-        """
         cap = cv2.VideoCapture(path)
         if not cap.isOpened():
             self.hide()

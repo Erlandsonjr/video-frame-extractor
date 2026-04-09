@@ -1,5 +1,3 @@
-"""Drag-and-drop label with video file MIME validation."""
-
 import os
 from PySide6.QtWidgets import QLabel
 from PySide6.QtCore import Qt, Signal
@@ -8,8 +6,6 @@ from utils.constants import VIDEO_EXTENSIONS
 
 
 class DropLabel(QLabel):
-    """A label that accepts drag-and-drop of video files only."""
-
     file_dropped = Signal(str)
 
     def __init__(self, parent=None):

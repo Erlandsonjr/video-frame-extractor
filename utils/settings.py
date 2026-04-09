@@ -1,5 +1,3 @@
-"""Typed wrapper around QSettings for persistent user preferences."""
-
 from PySide6.QtCore import QSettings
 from utils.constants import (
     APP_NAME, ORG_NAME, ZOOM_DEFAULT, DEFAULT_INTERVAL, DEFAULT_FILENAME_PATTERN,
@@ -7,8 +5,6 @@ from utils.constants import (
 
 
 class AppSettings:
-    """Read/write application settings backed by QSettings (registry on Windows, INI elsewhere)."""
-
     def __init__(self):
         self._s = QSettings(ORG_NAME, APP_NAME)
 

@@ -1,5 +1,3 @@
-"""Application class with theme management."""
-
 import os
 import sys
 from PySide6.QtWidgets import QApplication
@@ -7,11 +5,10 @@ from PySide6.QtCore import QObject, Signal
 
 from utils.constants import APP_NAME, ORG_NAME, APP_VERSION
 from utils.settings import AppSettings
+from utils.tempdir import cleanup_orphaned_temp_dirs
 
 
 class ThemeManager(QObject):
-    """Loads and applies QSS themes."""
-
     theme_changed = Signal(str)
 
     def __init__(self, app: QApplication, settings: AppSettings):
@@ -25,7 +22,6 @@ class ThemeManager(QObject):
         return self._settings.theme
 
     def apply_theme(self, theme_name: str):
-        """Apply a theme by name ('dark' or 'light')."""
         qss_path = os.path.join(self._styles_dir, f"{theme_name}.qss")
         if os.path.isfile(qss_path):
             with open(qss_path, "r", encoding="utf-8") as f:
@@ -36,18 +32,14 @@ class ThemeManager(QObject):
         self.theme_changed.emit(theme_name)
 
     def toggle_theme(self):
-        """Switch between dark and light."""
         new_theme = "light" if self.current_theme == "dark" else "dark"
         self.apply_theme(new_theme)
 
     def apply_saved_theme(self):
-        """Apply the theme stored in settings."""
         self.apply_theme(self.current_theme)
 
 
 class FrameExtractorApp(QApplication):
-    """Custom QApplication with settings and theme management."""
-
     def __init__(self, argv: list[str] | None = None):
         super().__init__(argv or sys.argv)
 
@@ -59,3 +51,5 @@ class FrameExtractorApp(QApplication):
         self.settings = AppSettings()
         self.theme_manager = ThemeManager(self, self.settings)
         self.theme_manager.apply_saved_theme()
+
+        cleanup_orphaned_temp_dirs()

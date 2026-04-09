@@ -1,15 +1,11 @@
-"""Enhanced gallery widget with context menu, selection tracking, and double-click preview."""
-
 from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QAbstractItemView, QMenu,
 )
-from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtGui import QPixmap, QIcon, QAction
+from PySide6.QtCore import Qt, QSize, Signal, QPropertyAnimation, QEasingCurve
+from PySide6.QtGui import QPixmap, QIcon, QAction, QWheelEvent
 
 
 class GalleryWidget(QListWidget):
-    """Thumbnail gallery with multi-selection, context menu, and preview support."""
-
     preview_requested = Signal(int)
     selection_changed_count = Signal(int)
 
@@ -22,25 +18,26 @@ class GalleryWidget(QListWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.setUniformItemSizes(False)
         self.setWordWrap(True)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
 
         self.customContextMenuRequested.connect(self._show_context_menu)
         self.itemDoubleClicked.connect(self._on_double_click)
         self.itemSelectionChanged.connect(self._emit_selection_count)
 
         self._aspect_ratio = 16 / 9
+        self._scroll_target_y = 0
+        self._scroll_anim: QPropertyAnimation | None = None
 
     def set_aspect_ratio(self, ratio: float):
-        """Set the video aspect ratio for proper thumbnail sizing."""
         self._aspect_ratio = ratio if ratio > 0 else 16 / 9
 
     def update_thumbnail_size(self, width: int):
-        """Resize gallery icons to the given width, maintaining the video's aspect ratio."""
         height = int(width / self._aspect_ratio)
         self.setIconSize(QSize(width, height))
         self.setGridSize(QSize(width + 20, height + 40))
 
     def add_frame(self, thumbnail_qimg, temp_filepath: str, timestamp: float, time_str: str):
-        """Add a frame thumbnail to the gallery."""
         item = QListWidgetItem()
         pixmap = QPixmap.fromImage(thumbnail_qimg)
         item.setIcon(QIcon(pixmap))
@@ -50,15 +47,12 @@ class GalleryWidget(QListWidget):
         self.addItem(item)
 
     def get_selected_frame_data(self) -> list[tuple[str, str]]:
-        """Return list of (time_str, temp_filepath) for all selected items."""
         return [item.data(Qt.UserRole) for item in self.selectedItems()]
 
     def get_all_frame_data(self) -> list[tuple[str, str]]:
-        """Return list of (time_str, temp_filepath) for all items."""
         return [self.item(i).data(Qt.UserRole) for i in range(self.count())]
 
     def remove_selected(self):
-        """Remove selected items from the gallery."""
         for item in self.selectedItems():
             self.takeItem(self.row(item))
 
@@ -93,3 +87,20 @@ class GalleryWidget(QListWidget):
 
     def _emit_selection_count(self):
         self.selection_changed_count.emit(len(self.selectedItems()))
+
+    def wheelEvent(self, event: QWheelEvent):
+        scrollbar = self.verticalScrollBar()
+        delta = -event.angleDelta().y()
+        self._scroll_target_y = max(
+            scrollbar.minimum(),
+            min(scrollbar.maximum(), scrollbar.value() + delta),
+        )
+        if self._scroll_anim and self._scroll_anim.state() == QPropertyAnimation.Running:
+            self._scroll_anim.stop()
+        self._scroll_anim = QPropertyAnimation(scrollbar, b"value")
+        self._scroll_anim.setDuration(300)
+        self._scroll_anim.setStartValue(scrollbar.value())
+        self._scroll_anim.setEndValue(self._scroll_target_y)
+        self._scroll_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._scroll_anim.start()
+        event.accept()

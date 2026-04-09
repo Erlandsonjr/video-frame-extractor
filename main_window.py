@@ -1,6 +1,3 @@
-"""Main window — fully rebuilt with menu bar, status bar, video info, cancel button,
-keyboard shortcuts, preview dialog, export dialog, batch support, and settings persistence."""
-
 import os
 import shutil
 import logging
@@ -11,16 +8,17 @@ from PySide6.QtWidgets import (
     QStyle, QSlider, QStatusBar,
 )
 from PySide6.QtCore import Qt, QTime
-from PySide6.QtGui import QPixmap, QAction, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
 
 from widgets import DropLabel, VideoInfoPanel, PreviewDialog, GalleryWidget
 from processing import VideoProcessor, ExportManager
 from dialogs import ExportDialog, SettingsDialog, BatchDialog
 from utils.constants import (
     APP_NAME, APP_VERSION, VIDEO_FILTER, ZOOM_MIN, ZOOM_MAX,
-    MIN_INTERVAL, MAX_INTERVAL, INTERVAL_STEP, TEMP_DIR,
+    MIN_INTERVAL, MAX_INTERVAL, INTERVAL_STEP,
 )
 from utils.settings import AppSettings
+from utils.tempdir import create_temp_dir
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +36,7 @@ class MainWindow(QMainWindow):
         self.video_info: dict = {}
         self.processor_thread: VideoProcessor | None = None
         self.export_thread: ExportManager | None = None
-        self.temp_dir = TEMP_DIR
-        os.makedirs(self.temp_dir, exist_ok=True)
+        self.temp_dir = create_temp_dir()
 
         self._build_menu_bar()
         self._build_status_bar()
@@ -123,6 +120,7 @@ class MainWindow(QMainWindow):
         act_about = QAction("&About", self)
         act_about.triggered.connect(self._show_about)
         help_menu.addAction(act_about)
+
 
     def _build_status_bar(self):
         self._status_bar = QStatusBar()
@@ -302,6 +300,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "Please select a video file first.")
             return
 
+        if self.processor_thread and self.processor_thread.isRunning():
+            QMessageBox.warning(self, "Warning", "Processing is already in progress.")
+            return
+
         start_sec = self._time_to_seconds(self.time_start.time())
         end_sec = self._time_to_seconds(self.time_end.time())
 
@@ -313,6 +315,7 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self._cleanup_thread(self.processor_thread)
         self._reset_ui_for_processing()
 
         interval = self.spin_interval.value()
@@ -329,6 +332,11 @@ class MainWindow(QMainWindow):
             self.processor_thread.wait(3000)
             self._restore_ui_after_processing()
             self._lbl_status.setText("Processing cancelled.")
+        elif self.export_thread and self.export_thread.isRunning():
+            self.export_thread.stop()
+            self.export_thread.wait(3000)
+            self._restore_ui_after_processing()
+            self._lbl_status.setText("Export cancelled.")
 
     def _reset_ui_for_processing(self):
         self.gallery.clear()
@@ -346,6 +354,7 @@ class MainWindow(QMainWindow):
     def _add_frame_to_gallery(self, thumbnail_qimg, temp_filepath: str, timestamp: float):
         time_str = self._format_timestamp(timestamp)
         self.gallery.add_frame(thumbnail_qimg, temp_filepath, timestamp, time_str)
+        self._lbl_frame_count.setText(f"{self.gallery.count()} frame(s)")
 
     @staticmethod
     def _format_timestamp(seconds_total: float) -> str:
@@ -387,13 +396,11 @@ class MainWindow(QMainWindow):
             self._lbl_selection.setText("")
 
     def _open_preview(self, index: int):
-        """Open full-resolution preview for the frame at the given gallery index."""
         frames = []
         for i in range(self.gallery.count()):
             item = self.gallery.item(i)
             time_str, temp_filepath = item.data(Qt.UserRole)
-            pixmap = QPixmap(temp_filepath)
-            frames.append((pixmap, time_str))
+            frames.append((temp_filepath, time_str))
 
         if not frames:
             return
@@ -403,7 +410,6 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _export_single_frame(self, index: int):
-        """Quick-export a single frame from the preview dialog."""
         item = self.gallery.item(index)
         if not item:
             return
@@ -431,9 +437,11 @@ class MainWindow(QMainWindow):
         if dialog.exec() != ExportDialog.Accepted:
             return
 
+        self._cleanup_thread(self.export_thread)
         self._lbl_status.setText("Exporting...")
         self.progress_bar.setValue(0)
         self.progress_bar.show()
+        self.btn_cancel.show()
 
         self.export_thread = ExportManager(
             frames=selected,
@@ -506,9 +514,18 @@ class MainWindow(QMainWindow):
             self.export_thread.wait(3000)
 
         try:
-            if os.path.exists(self.temp_dir):
+            if self.temp_dir and os.path.exists(self.temp_dir):
                 shutil.rmtree(self.temp_dir, ignore_errors=True)
         except Exception:
             pass
 
         event.accept()
+
+    @staticmethod
+    def _cleanup_thread(thread):
+        if thread is None:
+            return
+        if thread.isRunning():
+            thread.stop()
+            thread.wait(3000)
+        thread.deleteLater()

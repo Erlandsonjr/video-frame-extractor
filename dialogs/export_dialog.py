@@ -1,5 +1,3 @@
-"""Export options dialog — format, quality, naming, resolution."""
-
 import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
@@ -9,12 +7,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from utils.settings import AppSettings
-from utils.constants import DEFAULT_FILENAME_PATTERN
+from utils.constants import DEFAULT_FILENAME_PATTERN, EXPORT_FORMATS
 
 
 class ExportDialog(QDialog):
-    """Let the user configure export format, quality, naming, and resolution before saving."""
-
     def __init__(self, frame_count: int, video_name: str = "", settings: AppSettings | None = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Export Options")
@@ -45,7 +41,7 @@ class ExportDialog(QDialog):
         fmt_layout = QFormLayout(fmt_group)
 
         self._cmb_format = QComboBox()
-        self._cmb_format.addItems(["PNG", "JPEG", "WebP", "BMP"])
+        self._cmb_format.addItems(list(EXPORT_FORMATS.keys()))
         self._cmb_format.currentTextChanged.connect(self._on_format_changed)
         fmt_layout.addRow("Format:", self._cmb_format)
 
@@ -115,8 +111,8 @@ class ExportDialog(QDialog):
 
     def _update_preview(self):
         pattern = self._txt_pattern.text() or DEFAULT_FILENAME_PATTERN
-        ext_map = {"PNG": ".png", "JPEG": ".jpg", "WebP": ".webp", "BMP": ".bmp"}
-        ext = ext_map.get(self._cmb_format.currentText(), ".png")
+        fmt_key = self._cmb_format.currentText()
+        ext = EXPORT_FORMATS.get(fmt_key, EXPORT_FORMATS["PNG"])["ext"]
         try:
             example = pattern.format(video=self._video_name, time="00-05-30_0", index="0001")
         except (KeyError, IndexError, ValueError):

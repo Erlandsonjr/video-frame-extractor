@@ -1,6 +1,4 @@
-"""Application-wide constants."""
-
-import os
+import cv2
 
 APP_NAME = "Frame Extractor"
 APP_VERSION = "2.0.0"
@@ -14,10 +12,10 @@ VIDEO_EXTENSIONS = {
 VIDEO_FILTER = "Videos (*.mp4 *.avi *.mkv *.mov *.webm *.flv *.wmv *.m4v *.mpg *.mpeg *.3gp *.ts)"
 
 EXPORT_FORMATS = {
-    "PNG": {"ext": ".png", "cv2_params": []},
-    "JPEG": {"ext": ".jpg", "cv2_params_key": "cv2.IMWRITE_JPEG_QUALITY"},
-    "WebP": {"ext": ".webp", "cv2_params_key": "cv2.IMWRITE_WEBP_QUALITY"},
-    "BMP":  {"ext": ".bmp", "cv2_params": []},
+    "PNG":  {"ext": ".png",  "cv2_params": []},
+    "JPEG": {"ext": ".jpg",  "cv2_params": [cv2.IMWRITE_JPEG_QUALITY]},
+    "WebP": {"ext": ".webp", "cv2_params": [cv2.IMWRITE_WEBP_QUALITY]},
+    "BMP":  {"ext": ".bmp",  "cv2_params": []},
 }
 
 DEFAULT_FILENAME_PATTERN = "frame_{time}_{index}"
@@ -35,5 +33,5 @@ MAX_INTERVAL = 3600.0
 INTERVAL_STEP = 0.5
 
 TEMP_DIR_PREFIX = "frame_extractor_"
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEMP_DIR = os.path.join(PROJECT_DIR, "temp_frames")
+
+SEQUENTIAL_READ_THRESHOLD = 30

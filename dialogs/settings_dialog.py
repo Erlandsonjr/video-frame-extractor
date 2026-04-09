@@ -1,5 +1,3 @@
-"""Application settings dialog — theme, defaults, behavior."""
-
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QGroupBox,
     QComboBox, QDoubleSpinBox, QDialogButtonBox, QLabel,
@@ -10,8 +8,6 @@ from utils.constants import MIN_INTERVAL, MAX_INTERVAL, INTERVAL_STEP
 
 
 class SettingsDialog(QDialog):
-    """Preferences dialog for theme, default interval, and other settings."""
-
     def __init__(self, settings: AppSettings, theme_callback=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")

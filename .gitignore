@@ -31,3 +31,4 @@ Desktop.ini
 temp_frames/
 extracted_frames/
 *.log
+.pytest_cache/
