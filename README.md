@@ -86,7 +86,7 @@ python main.py
 ## Project Structure
 
 ```
-frame_extractor/
+video-frame-extractor/
 ├── main.py                  # Entry point
 ├── app.py                   # QApplication subclass, theme management
 ├── main_window.py           # Main window with menu bar, status bar, all UI
@@ -96,7 +96,7 @@ frame_extractor/
 │   ├── drop_label.py        # Drag-and-drop with file validation
 │   ├── video_info_panel.py  # Video metadata bar
 │   ├── gallery_widget.py    # Thumbnail grid with context menu
-│   └── preview_dialog.py    # Full-resolution frame viewer
+│   └── preview_dialog.py   # Full-resolution frame viewer
 │
 ├── processing/              # Background workers
 │   ├── video_processor.py   # Frame extraction thread
