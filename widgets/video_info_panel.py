@@ -2,6 +2,8 @@ import cv2
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel
 from PySide6.QtCore import Qt
 
+from utils.timecode import seconds_to_hms
+
 
 class VideoInfoPanel(QFrame):
     def __init__(self, parent=None):
@@ -38,13 +40,6 @@ class VideoInfoPanel(QFrame):
         s = "".join(chars).strip()
         return s if s else "Unknown"
 
-    @staticmethod
-    def _seconds_to_hms(seconds: float) -> str:
-        h = int(seconds // 3600)
-        m = int((seconds % 3600) // 60)
-        s = seconds % 60
-        return f"{h:02d}:{m:02d}:{s:05.2f}"
-
     def load_video_info(self, path: str) -> dict:
         cap = cv2.VideoCapture(path)
         if not cap.isOpened():
@@ -64,7 +59,7 @@ class VideoInfoPanel(QFrame):
 
         self._lbl_resolution.setText(f"Resolution: {width}×{height}")
         self._lbl_fps.setText(f"FPS: {fps:.2f}")
-        self._lbl_duration.setText(f"Duration: {self._seconds_to_hms(duration)}")
+        self._lbl_duration.setText(f"Duration: {seconds_to_hms(duration, decimals=2)}")
         self._lbl_codec.setText(f"Codec: {codec_str}")
 
         self.show()

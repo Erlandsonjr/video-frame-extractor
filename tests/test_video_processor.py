@@ -1,4 +1,5 @@
 import os
+import re
 import pytest
 from PySide6.QtCore import QCoreApplication
 
@@ -28,6 +29,20 @@ class TestVideoProcessor:
         assert len(extracted) > 0
         for p in extracted:
             assert os.path.isfile(p)
+
+    def test_temp_filenames_are_indexed_and_unique(self, tmp_video, tmp_path):
+        temp_dir = str(tmp_path / "frames")
+        os.makedirs(temp_dir)
+
+        paths = []
+        proc = VideoProcessor(tmp_video, 0, 0, 0.1, temp_dir)
+        proc.frame_extracted.connect(lambda _img, path, ts: paths.append(path))
+
+        proc.run()
+
+        names = [os.path.basename(p) for p in paths]
+        assert len(names) == len(set(names))  # no collisions
+        assert all(re.fullmatch(r"temp_frame_\d{6}\.png", n) for n in names)
 
     def test_start_end_range(self, tmp_video, tmp_path):
         temp_dir = str(tmp_path / "frames")

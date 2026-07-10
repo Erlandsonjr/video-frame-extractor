@@ -93,6 +93,43 @@ class TestExportManager:
         assert results["success"] == 0
         assert results["total"] == 1
 
+    def test_colliding_pattern_produces_unique_files(self, sample_frames, tmp_output_dir):
+        # A pattern with no {index}/{time} would map every frame to the same
+        # name; the manager must suffix duplicates instead of overwriting.
+        results = {"success": 0, "total": 0}
+        em = ExportManager(
+            frames=sample_frames,
+            output_dir=tmp_output_dir,
+            video_name="clip",
+            fmt="PNG",
+            filename_pattern="{video}",
+        )
+        em.finished.connect(lambda s, t: results.update(success=s, total=t))
+        em.run()
+
+        assert results["success"] == 3
+        files = sorted(os.listdir(tmp_output_dir))
+        assert files == ["clip.png", "clip_1.png", "clip_2.png"]
+
+    def test_avoids_overwriting_existing_file(self, sample_frames, tmp_output_dir):
+        existing = os.path.join(tmp_output_dir, "clip.png")
+        with open(existing, "wb") as f:
+            f.write(b"sentinel")
+
+        em = ExportManager(
+            frames=sample_frames[:1],
+            output_dir=tmp_output_dir,
+            video_name="clip",
+            fmt="PNG",
+            filename_pattern="{video}",
+        )
+        em.run()
+
+        # The pre-existing file is untouched; the export lands beside it.
+        with open(existing, "rb") as f:
+            assert f.read() == b"sentinel"
+        assert os.path.exists(os.path.join(tmp_output_dir, "clip_1.png"))
+
     def test_stop_cancels_export(self, sample_frames, tmp_output_dir):
         em = ExportManager(
             frames=sample_frames,

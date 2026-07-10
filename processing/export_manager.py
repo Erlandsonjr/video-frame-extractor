@@ -48,6 +48,7 @@ class ExportManager(QThread):
         fmt_info = self._resolve_format(self._fmt)
         ext = fmt_info["ext"]
 
+        used_paths: set[str] = set()
         success = 0
         for i, (time_str, temp_filepath) in enumerate(self._frames):
             if not self._is_running:
@@ -60,7 +61,7 @@ class ExportManager(QThread):
                     time=safe_time,
                     index=f"{i + 1:04d}",
                 )
-                dest_path = os.path.join(self._output_dir, f"{filename}{ext}")
+                dest_path = self._unique_path(filename, ext, used_paths)
 
                 frame = cv2.imread(temp_filepath, cv2.IMREAD_UNCHANGED)
                 if frame is None:
@@ -85,6 +86,22 @@ class ExportManager(QThread):
             self.progress_updated.emit(progress)
 
         self.finished.emit(success, total)
+
+    def _unique_path(self, filename: str, ext: str, used_paths: set[str]) -> str:
+        """Build a destination path that doesn't clash with an existing file or
+        an earlier frame in this same export (e.g. patterns without ``{index}``)."""
+        candidate = os.path.join(self._output_dir, f"{filename}{ext}")
+        if candidate not in used_paths and not os.path.exists(candidate):
+            used_paths.add(candidate)
+            return candidate
+
+        counter = 1
+        while True:
+            candidate = os.path.join(self._output_dir, f"{filename}_{counter}{ext}")
+            if candidate not in used_paths and not os.path.exists(candidate):
+                used_paths.add(candidate)
+                return candidate
+            counter += 1
 
     def _get_write_params(self) -> list:
         fmt_info = self._resolve_format(self._fmt)

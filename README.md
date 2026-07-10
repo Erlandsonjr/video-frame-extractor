@@ -1,4 +1,4 @@
-# Frame Extractor v2.0.0
+# Frame Extractor v2.1.0
 
 A desktop application for extracting individual frames from video files. Select a video, configure a time range and capture interval, preview thumbnails, and export chosen frames in multiple formats.
 
@@ -14,13 +14,13 @@ Built with **PySide6** and **OpenCV**.
 
 - **Drag-and-drop** or browse to load a video file
 - **Video metadata display** — resolution, FPS, duration, and codec shown after loading
-- **Time range selection** — configurable start/end times with an interval spinner
+- **Time range selection** — configurable start/end times with an interval spinner; the end time auto-fills to the video's duration on load, and a live estimate shows how many frames the current settings will produce
 - **Background processing** — frame extraction runs on a separate thread; UI stays responsive
 - **Cancel support** — stop extraction at any time
 - **Thumbnail gallery** — zoomable, multi-select grid with aspect-ratio-correct thumbnails
 - **Full-resolution preview** — double-click any frame to open a zoomable, pannable viewer with prev/next navigation
 - **Context menu** — right-click for Preview, Select All, Clear Selection, Remove Selected
-- **Export dialog** — choose format (PNG, JPEG, WebP, BMP), quality, resolution scaling, and custom filename patterns
+- **Export dialog** — choose format (PNG, JPEG, WebP, BMP), quality, resolution scaling, and custom filename patterns; colliding filenames are auto-suffixed so frames are never silently overwritten, and you can jump straight to the output folder when the export finishes
 - **Batch processing** — queue multiple videos and extract frames from all of them
 - **Dark & light themes** — toggle with `Ctrl+T`; Catppuccin-inspired stylesheets
 - **Persistent settings** — theme, last directory, window geometry, default interval, and export preferences are remembered across sessions

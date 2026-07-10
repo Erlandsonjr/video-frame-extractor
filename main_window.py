@@ -1,24 +1,28 @@
 import os
+import re
 import shutil
 import logging
+
+import cv2
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QDoubleSpinBox, QTimeEdit, QProgressBar, QMessageBox,
     QStyle, QSlider, QStatusBar,
 )
-from PySide6.QtCore import Qt, QTime
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QTime, QUrl
+from PySide6.QtGui import QAction, QKeySequence, QShortcut, QDesktopServices
 
 from widgets import DropLabel, VideoInfoPanel, PreviewDialog, GalleryWidget
 from processing import VideoProcessor, ExportManager
 from dialogs import ExportDialog, SettingsDialog, BatchDialog
 from utils.constants import (
     APP_NAME, APP_VERSION, VIDEO_FILTER, ZOOM_MIN, ZOOM_MAX,
-    MIN_INTERVAL, MAX_INTERVAL, INTERVAL_STEP,
+    MIN_INTERVAL, MAX_INTERVAL, INTERVAL_STEP, LARGE_EXTRACTION_WARNING,
 )
 from utils.settings import AppSettings
 from utils.tempdir import create_temp_dir
+from utils.timecode import seconds_to_hms, filename_safe_timecode
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,7 @@ class MainWindow(QMainWindow):
         self.video_info: dict = {}
         self.processor_thread: VideoProcessor | None = None
         self.export_thread: ExportManager | None = None
+        self._last_export_dir: str | None = None
         self.temp_dir = create_temp_dir()
 
         self._build_menu_bar()
@@ -171,6 +176,7 @@ class MainWindow(QMainWindow):
         self.time_start = QTimeEdit()
         self.time_start.setDisplayFormat("HH:mm:ss")
         self.time_start.setTime(QTime(0, 0, 0))
+        self.time_start.timeChanged.connect(self._update_frame_estimate)
         row.addWidget(self.time_start)
 
         row.addWidget(QLabel("End:"))
@@ -178,6 +184,7 @@ class MainWindow(QMainWindow):
         self.time_end.setDisplayFormat("HH:mm:ss")
         self.time_end.setTime(QTime(0, 0, 0))
         self.time_end.setToolTip("Leave at 00:00:00 to process until end of video")
+        self.time_end.timeChanged.connect(self._update_frame_estimate)
         row.addWidget(self.time_end)
 
         row.addWidget(QLabel("Interval (sec):"))
@@ -185,7 +192,12 @@ class MainWindow(QMainWindow):
         self.spin_interval.setRange(MIN_INTERVAL, MAX_INTERVAL)
         self.spin_interval.setValue(self._settings.default_interval)
         self.spin_interval.setSingleStep(INTERVAL_STEP)
+        self.spin_interval.valueChanged.connect(self._update_frame_estimate)
         row.addWidget(self.spin_interval)
+
+        self._lbl_estimate = QLabel("")
+        self._lbl_estimate.setToolTip("Approximate number of frames the current range and interval will produce")
+        row.addWidget(self._lbl_estimate)
 
         self.btn_process = QPushButton("Process Video")
         self.btn_process.setObjectName("btn_process")
@@ -284,13 +296,44 @@ class MainWindow(QMainWindow):
             self._on_zoom_changed(self.zoom_slider.value())
 
             duration = self.video_info.get("duration", 0)
+            self._prefill_time_range(duration)
             self._lbl_status.setText(
                 f"Loaded: {os.path.basename(file_path)} — "
                 f"{self.video_info['width']}×{self.video_info['height']} — "
-                f"{duration:.1f}s"
+                f"{seconds_to_hms(duration, decimals=1)}"
             )
         else:
             self._lbl_status.setText(f"Loaded: {os.path.basename(file_path)}")
+        self._update_frame_estimate()
+
+    def _prefill_time_range(self, duration: float):
+        """Reset start to 0 and default the end time to the video's duration so
+        the range is concrete and editable instead of the opaque 00:00:00."""
+        self.time_start.setTime(QTime(0, 0, 0))
+        if duration > 0:
+            total = min(int(round(duration)), 23 * 3600 + 59 * 60 + 59)
+            h, rem = divmod(total, 3600)
+            m, s = divmod(rem, 60)
+            self.time_end.setTime(QTime(h, m, s))
+        else:
+            self.time_end.setTime(QTime(0, 0, 0))
+
+    def _estimate_frame_count(self) -> int:
+        """How many frames the current start/end/interval would extract."""
+        interval = self.spin_interval.value()
+        if interval <= 0:
+            return 0
+        start = self._time_to_seconds(self.time_start.time())
+        end = self._time_to_seconds(self.time_end.time())
+        if end == 0:
+            end = self.video_info.get("duration", 0)
+        if end <= start:
+            return 0
+        return int((end - start) / interval) + 1
+
+    def _update_frame_estimate(self):
+        count = self._estimate_frame_count()
+        self._lbl_estimate.setText(f"≈ {count} frame(s)" if count > 0 else "")
 
     def _time_to_seconds(self, qtime: QTime) -> float:
         return qtime.hour() * 3600 + qtime.minute() * 60 + qtime.second()
@@ -314,6 +357,18 @@ class MainWindow(QMainWindow):
                 "Set end to 00:00:00 to process until the end of the video."
             )
             return
+
+        estimate = self._estimate_frame_count()
+        if estimate > LARGE_EXTRACTION_WARNING:
+            reply = QMessageBox.question(
+                self, "Large Extraction",
+                f"This will extract about {estimate} frames, which may use a lot "
+                f"of memory and time.\n\nContinue?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
 
         self._cleanup_thread(self.processor_thread)
         self._reset_ui_for_processing()
@@ -352,16 +407,9 @@ class MainWindow(QMainWindow):
         self.processor_thread.error_occurred.connect(self._on_processing_error)
 
     def _add_frame_to_gallery(self, thumbnail_qimg, temp_filepath: str, timestamp: float):
-        time_str = self._format_timestamp(timestamp)
+        time_str = seconds_to_hms(timestamp, decimals=1)
         self.gallery.add_frame(thumbnail_qimg, temp_filepath, timestamp, time_str)
         self._lbl_frame_count.setText(f"{self.gallery.count()} frame(s)")
-
-    @staticmethod
-    def _format_timestamp(seconds_total: float) -> str:
-        hours = int(seconds_total // 3600)
-        minutes = int((seconds_total % 3600) // 60)
-        seconds = seconds_total % 60
-        return f"{hours:02d}:{minutes:02d}:{seconds:04.1f}"
 
     def _on_processing_finished(self):
         self._restore_ui_after_processing()
@@ -414,17 +462,31 @@ class MainWindow(QMainWindow):
         if not item:
             return
         time_str, temp_filepath = item.data(Qt.UserRole)
-        save_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Frame", f"frame_{time_str.replace(':', '-')}.png",
+        default_name = f"frame_{filename_safe_timecode(time_str)}.png"
+        save_path, selected_filter = QFileDialog.getSaveFileName(
+            self, "Save Frame", default_name,
             "PNG (*.png);;JPEG (*.jpg);;WebP (*.webp);;BMP (*.bmp)"
         )
-        if save_path:
-            import shutil
-            try:
-                shutil.copy2(temp_filepath, save_path)
-                self._lbl_status.setText(f"Saved: {os.path.basename(save_path)}")
-            except Exception as e:
-                QMessageBox.critical(self, "Export Error", str(e))
+        if not save_path:
+            return
+
+        # Re-encode through OpenCV so the saved file actually matches the chosen
+        # format — a plain copy would keep PNG bytes under a .jpg name.
+        if not os.path.splitext(save_path)[1]:
+            save_path += self._ext_from_filter(selected_filter)
+
+        try:
+            frame = cv2.imread(temp_filepath, cv2.IMREAD_UNCHANGED)
+            if frame is None or not cv2.imwrite(save_path, frame):
+                raise OSError("Could not encode the frame to the chosen format.")
+            self._lbl_status.setText(f"Saved: {os.path.basename(save_path)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", str(e))
+
+    @staticmethod
+    def _ext_from_filter(selected_filter: str) -> str:
+        match = re.search(r"\*(\.\w+)", selected_filter or "")
+        return match.group(1) if match else ".png"
 
     def _save_frames(self):
         selected = self.gallery.get_selected_frame_data()
@@ -438,6 +500,7 @@ class MainWindow(QMainWindow):
             return
 
         self._cleanup_thread(self.export_thread)
+        self._last_export_dir = dialog.output_dir
         self._lbl_status.setText("Exporting...")
         self.progress_bar.setValue(0)
         self.progress_bar.show()
@@ -461,16 +524,35 @@ class MainWindow(QMainWindow):
 
     def _on_export_finished(self, success: int, total: int):
         self.progress_bar.hide()
+        self.btn_cancel.hide()
         if success == total:
             self._lbl_status.setText(f"Exported {success} frame(s) successfully.")
-            QMessageBox.information(self, "Export Complete", f"Successfully saved {success} frame(s).")
+            self._show_export_result(
+                "Export Complete",
+                f"Successfully saved {success} frame(s).",
+                QMessageBox.Information,
+            )
         else:
             self._lbl_status.setText(f"Exported {success}/{total} frame(s) — some failed.")
-            QMessageBox.warning(
-                self, "Export Partial",
+            self._show_export_result(
+                "Export Partial",
                 f"Exported {success} of {total} frame(s).\n"
-                f"{total - success} frame(s) failed — check the source files."
+                f"{total - success} frame(s) failed — check the source files.",
+                QMessageBox.Warning,
             )
+
+    def _show_export_result(self, title: str, text: str, icon):
+        box = QMessageBox(self)
+        box.setIcon(icon)
+        box.setWindowTitle(title)
+        box.setText(text)
+        open_btn = None
+        if self._last_export_dir and os.path.isdir(self._last_export_dir):
+            open_btn = box.addButton("Open Folder", QMessageBox.ActionRole)
+        box.addButton(QMessageBox.Ok)
+        box.exec()
+        if open_btn is not None and box.clickedButton() is open_btn:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self._last_export_dir))
 
     def _open_batch_dialog(self):
         dialog = BatchDialog(self._settings, self)

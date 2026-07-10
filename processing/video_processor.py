@@ -1,10 +1,13 @@
 import logging
 import os
+import numpy as np
 import cv2
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 
-from utils.constants import THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT, SEQUENTIAL_READ_THRESHOLD
+from utils.constants import (
+    THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT, SEQUENTIAL_READ_THRESHOLD,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,7 @@ class VideoProcessor(QThread):
         self.interval_sec = interval_sec
         self.temp_dir = temp_dir
         self._is_running = True
+        self._frame_index = 0
 
     def run(self):
         try:
@@ -137,9 +141,13 @@ class VideoProcessor(QThread):
             self.finished_processing.emit()
 
     def _emit_frame(self, frame, timestamp: float):
-        safe_time_str = str(timestamp).replace(".", "_")
-        temp_filename = f"temp_frame_{safe_time_str}.png"
+        # Index-based names are unique and tidy; the displayed timestamp is
+        # carried separately, so the temp filename never needs to encode it.
+        temp_filename = f"temp_frame_{self._frame_index:06d}.png"
+        self._frame_index += 1
         temp_filepath = os.path.join(self.temp_dir, temp_filename)
+        # OpenCV's default PNG settings benchmarked fastest here (and smallest);
+        # forcing a lower IMWRITE_PNG_COMPRESSION level was measurably worse.
         cv2.imwrite(temp_filepath, frame)
 
         thumbnail_cv2 = self._make_thumbnail(frame)
@@ -148,7 +156,7 @@ class VideoProcessor(QThread):
         self.frame_extracted.emit(thumbnail_qimg, temp_filepath, timestamp)
 
     @staticmethod
-    def _make_thumbnail(frame) -> any:
+    def _make_thumbnail(frame: np.ndarray) -> np.ndarray:
         h, w = frame.shape[:2]
         if w == 0 or h == 0:
             return frame

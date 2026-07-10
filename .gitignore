@@ -32,3 +32,5 @@ temp_frames/
 extracted_frames/
 *.log
 .pytest_cache/
+
+CLAUDE.md

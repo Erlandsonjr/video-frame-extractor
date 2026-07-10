@@ -1,7 +1,7 @@
 import cv2
 
 APP_NAME = "Frame Extractor"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 ORG_NAME = "FrameExtractorOrg"
 
 VIDEO_EXTENSIONS = {
@@ -35,3 +35,7 @@ INTERVAL_STEP = 0.5
 TEMP_DIR_PREFIX = "frame_extractor_"
 
 SEQUENTIAL_READ_THRESHOLD = 30
+
+# Extracting beyond this many frames builds that many thumbnails/widgets and can
+# use a lot of memory, so the UI asks the user to confirm first.
+LARGE_EXTRACTION_WARNING = 2000
